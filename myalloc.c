@@ -97,3 +97,43 @@ static block_t *grow(size_t need)
 
     return block;
 }
+
+static block_t *find_fit(size_t need)
+{
+    block_t *current = head;
+
+    while (current != NULL) {
+        if (current->free && current->size >= need)
+            return current;
+
+        current = current->next;
+    }
+
+    return NULL;
+}
+
+void *my_malloc(size_t size)
+{
+    if (size == 0)
+        return NULL;
+
+    size_t need = align_up(size);
+
+    if (need == 0)
+        return NULL;
+
+    if (need > SIZE_MAX - HDR)
+        return NULL;
+
+    block_t *block = find_fit(need);
+
+    if (block == NULL)
+        block = grow(need);
+
+    if (block == NULL)
+        return NULL;
+
+    block->free = 0;
+
+    return payload(block);
+}
