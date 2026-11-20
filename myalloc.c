@@ -112,6 +112,29 @@ static block_t *find_fit(size_t need)
     return NULL;
 }
 
+static void split_block(block_t *block, size_t need)
+{
+    if (block->size < need)
+        return;
+
+    if (block->size - need < HDR + ALIGNMENT)
+        return;
+
+    block_t *remainder =
+        (block_t *)((char *)block + HDR + need);
+
+    remainder->size = block->size - need - HDR;
+    remainder->next = block->next;
+    remainder->free = 1;
+    remainder->magic = MAGIC;
+
+    block->size = need;
+    block->next = remainder;
+
+    if (tail == block)
+        tail = remainder;
+}
+
 void *my_malloc(size_t size)
 {
     if (size == 0)
@@ -132,6 +155,8 @@ void *my_malloc(size_t size)
 
     if (block == NULL)
         return NULL;
+
+    split_block(block, need);
 
     block->free = 0;
 
