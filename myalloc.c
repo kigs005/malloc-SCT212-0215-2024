@@ -218,3 +218,94 @@ void my_free(void *ptr)
 
     coalesce();
 }
+
+void *my_calloc(size_t nmemb, size_t size)
+{
+    if (nmemb != 0 && size > SIZE_MAX / nmemb)
+        return NULL;
+
+    size_t total_size = nmemb * size;
+
+    void *ptr = my_malloc(total_size);
+
+    if (ptr == NULL)
+        return NULL;
+
+    memset(ptr, 0, total_size);
+
+    return ptr;
+}
+
+void *my_realloc(void *ptr, size_t size)
+{
+    if (ptr == NULL)
+        return my_malloc(size);
+
+    if (size == 0) {
+        my_free(ptr);
+        return NULL;
+    }
+
+    size_t need = align_up(size);
+
+    if (need == 0 || need > SIZE_MAX - HDR)
+        return NULL;
+
+    block_t *current = head;
+
+    while (current != NULL) {
+        if (payload(current) == ptr)
+            break;
+
+        current = current->next;
+    }
+
+    if (current == NULL || current->magic != MAGIC || current->free)
+        return NULL;
+
+    if (need <= current->size) {
+        split_block(current, need);
+        coalesce();
+        return ptr;
+    }
+
+    while (current->next != NULL && current->next->free) {
+        block_t *next = current->next;
+
+        uintptr_t current_end =
+            (uintptr_t)current + HDR + current->size;
+
+        if (current_end != (uintptr_t)next)
+            break;
+
+        current->size += HDR + next->size;
+        current->next = next->next;
+
+        if (tail == next)
+            tail = current;
+
+        if (current->size >= need)
+            break;
+    }
+
+    if (current->size >= need) {
+        split_block(current, need);
+        return ptr;
+    }
+
+    void *new_ptr = my_malloc(size);
+
+    if (new_ptr == NULL)
+        return NULL;
+
+    size_t copy_size = current->size;
+
+    if (copy_size > size)
+        copy_size = size;
+
+    memcpy(new_ptr, ptr, copy_size);
+
+    my_free(ptr);
+
+    return new_ptr;
+}
