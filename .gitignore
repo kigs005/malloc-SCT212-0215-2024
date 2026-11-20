@@ -1,0 +1,18 @@
+# Compiled executables
+test_myalloc
+bench
+benchmark
+t_asan
+
+# Object files
+*.o
+
+# Debug files
+*.out
+core
+core.*
+
+# Editor and temporary files
+*~
+*.swp
+*.tmp
