@@ -316,8 +316,177 @@ void *my_realloc(void *ptr, size_t size)
     return new_ptr;
 }
 
+void heap_stats(heap_stats_t *out)
+{
+    if (out == NULL)
+        return;
+
+    out->heap_bytes = total_heap_bytes;
+    out->used_bytes = 0;
+    out->free_bytes = 0;
+    out->blocks = 0;
+    out->free_blocks = 0;
+    out->largest_free = 0;
+
+    block_t *current = head;
+
+    while (current != NULL) {
+        out->blocks++;
+
+        if (current->free) {
+            out->free_bytes += current->size;
+            out->free_blocks++;
+
+            if (current->size > out->largest_free)
+                out->largest_free = current->size;
+        } else {
+            out->used_bytes += current->size;
+        }
+
+        current = current->next;
+    }
+}
+
+int heap_check(void)
+{
+    if (head == NULL)
+        return tail == NULL && total_heap_bytes == 0;
+
+    if (tail == NULL)
+        return 0;
+
+    block_t *slow = head;
+    block_t *fast = head;
+
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+
+        if (slow == fast)
+            return 0;
+    }
+
+    block_t *current = head;
+    block_t *previous = NULL;
+    block_t *last = NULL;
+
+    while (current != NULL) {
+        uintptr_t address = (uintptr_t)current;
+
+        if (current->magic != MAGIC)
+            return 0;
+
+        if (current->free != 0 && current->free != 1)
+            return 0;
+
+        if (current->size == 0 || current->size % ALIGNMENT != 0)
+            return 0;
+
+        if (address % ALIGNMENT != 0)
+            return 0;
+
+        if (current->size > UINTPTR_MAX - address - HDR)
+            return 0;
+
+        uintptr_t current_end = address + HDR + current->size;
+
+        if (previous != NULL) {
+            uintptr_t previous_address = (uintptr_t)previous;
+
+            if (address <= previous_address)
+                return 0;
+
+            uintptr_t previous_end =
+                previous_address + HDR + previous->size;
+
+            if (previous_end > address)
+                return 0;
+
+            if (previous->free && current->free &&
+                previous_end == address)
+                return 0;
+        }
+
+        previous = current;
+        last = current;
+        current = current->next;
+    }
+
+    if (last != tail)
+        return 0;
+
+    if (tail->next != NULL)
+        return 0;
+
+    return 1;
+}
+
 void set_policy(fit_policy_t p)
 {
     if (p == FIT_FIRST || p == FIT_BEST)
         current_policy = p;
+}
+
+void heap_dump(void)
+{
+    char buffer[256];
+
+    int length = snprintf(
+        buffer,
+        sizeof(buffer),
+        "Heap bytes: %zu\n",
+        total_heap_bytes
+    );
+
+    if (length > 0) {
+        size_t output_length =
+            (size_t)length < sizeof(buffer)
+                ? (size_t)length
+                : sizeof(buffer) - 1;
+
+        write(STDOUT_FILENO, buffer, output_length);
+    }
+
+    block_t *current = head;
+    size_t index = 0;
+
+    while (current != NULL) {
+        length = snprintf(
+            buffer,
+            sizeof(buffer),
+            "Block %zu: address=%p size=%zu status=%s\n",
+            index,
+            (void *)current,
+            current->size,
+            current->free ? "FREE" : "USED"
+        );
+
+        if (length > 0) {
+            size_t output_length =
+                (size_t)length < sizeof(buffer)
+                    ? (size_t)length
+                    : sizeof(buffer) - 1;
+
+            write(STDOUT_FILENO, buffer, output_length);
+        }
+
+        current = current->next;
+        index++;
+    }
+
+    length = snprintf(
+        buffer,
+        sizeof(buffer),
+        "Total blocks: %zu\n",
+        index
+    );
+
+    if (length > 0) {
+        size_t output_length =
+            (size_t)length < sizeof(buffer)
+                ? (size_t)length
+                : sizeof(buffer) - 1;
+
+        write(STDOUT_FILENO, buffer, output_length);
+    }
 }
