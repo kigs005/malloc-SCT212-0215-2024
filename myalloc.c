@@ -162,3 +162,59 @@ void *my_malloc(size_t size)
 
     return payload(block);
 }
+
+static void coalesce(void)
+{
+    block_t *current = head;
+
+    while (current != NULL && current->next != NULL) {
+        block_t *next = current->next;
+
+        uintptr_t current_end =
+            (uintptr_t)current + HDR + current->size;
+
+        if (current->free &&
+            next->free &&
+            current_end == (uintptr_t)next) {
+
+            current->size += HDR + next->size;
+            current->next = next->next;
+
+            if (tail == next)
+                tail = current;
+        } else {
+            current = current->next;
+        }
+    }
+}
+
+void my_free(void *ptr)
+{
+    if (ptr == NULL)
+        return;
+
+    block_t *current = head;
+
+    while (current != NULL) {
+        if (payload(current) == ptr)
+            break;
+
+        current = current->next;
+    }
+
+    if (current == NULL) {
+        static const char message[] = "my_free: invalid pointer\n";
+        write(STDERR_FILENO, message, sizeof(message) - 1);
+        return;
+    }
+
+    if (current->magic != MAGIC || current->free) {
+        static const char message[] = "my_free: invalid or double free\n";
+        write(STDERR_FILENO, message, sizeof(message) - 1);
+        return;
+    }
+
+    current->free = 1;
+
+    coalesce();
+}
