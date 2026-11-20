@@ -16,3 +16,4 @@ core.*
 *~
 *.swp
 *.tmp
+benchmark_results.txt
