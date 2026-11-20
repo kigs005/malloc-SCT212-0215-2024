@@ -10,14 +10,10 @@
 
 #include "myalloc.h"
 
-
 #define ALIGNMENT 16
 #define ALIGN_MASK (ALIGNMENT - 1)
-
 #define MAGIC UINT32_C(0xCAFEBABE)
-
 #define CHUNK_SIZE (64 * 1024)
-
 
 typedef struct block {
     size_t size;
@@ -26,22 +22,11 @@ typedef struct block {
     uint32_t magic;
 } block_t;
 
-
 #define HDR \
     ((sizeof(block_t) + ALIGN_MASK) & ~(size_t)ALIGN_MASK)
 
-
-_Static_assert(
-    ALIGNMENT == 16,
-    "Allocator alignment must be 16 bytes"
-);
-
-_Static_assert(
-    (HDR % ALIGNMENT) == 0,
-    "Block header size must be a multiple of 16"
-);
-
-
+_Static_assert(ALIGNMENT == 16, "Alignment must be 16 bytes");
+_Static_assert((HDR % ALIGNMENT) == 0, "Header must be aligned");
 
 static block_t *head = NULL;
 static block_t *tail = NULL;
@@ -49,3 +34,66 @@ static block_t *tail = NULL;
 static size_t total_heap_bytes = 0;
 
 static fit_policy_t current_policy = FIT_FIRST;
+
+static size_t align_up(size_t size)
+{
+    if (size > SIZE_MAX - ALIGN_MASK)
+        return 0;
+
+    return (size + ALIGN_MASK) & ~(size_t)ALIGN_MASK;
+}
+
+static void *payload(block_t *block)
+{
+    return (char *)block + HDR;
+}
+
+static block_t *grow(size_t need)
+{
+    if (need > SIZE_MAX - HDR)
+        return NULL;
+
+    size_t total_size = need + HDR;
+
+    if (total_size < CHUNK_SIZE)
+        total_size = CHUNK_SIZE;
+
+    void *current_break = sbrk(0);
+
+    if (current_break == (void *)-1)
+        return NULL;
+
+    uintptr_t address = (uintptr_t)current_break;
+
+    size_t padding =
+        (ALIGNMENT - ((address + HDR) % ALIGNMENT)) % ALIGNMENT;
+
+    if (total_size > SIZE_MAX - padding)
+        return NULL;
+
+    if (total_heap_bytes > SIZE_MAX - total_size - padding)
+        return NULL;
+
+    void *memory = sbrk(total_size + padding);
+
+    if (memory == (void *)-1)
+        return NULL;
+
+    block_t *block = (block_t *)((char *)memory + padding);
+
+    block->size = total_size - HDR;
+    block->next = NULL;
+    block->free = 1;
+    block->magic = MAGIC;
+
+    if (head == NULL)
+        head = block;
+    else
+        tail->next = block;
+
+    tail = block;
+
+    total_heap_bytes += total_size + padding;
+
+    return block;
+}
