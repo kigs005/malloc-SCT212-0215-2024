@@ -101,15 +101,21 @@ static block_t *grow(size_t need)
 static block_t *find_fit(size_t need)
 {
     block_t *current = head;
+    block_t *best = NULL;
 
     while (current != NULL) {
-        if (current->free && current->size >= need)
-            return current;
+        if (current->free && current->size >= need) {
+            if (current_policy == FIT_FIRST)
+                return current;
+
+            if (best == NULL || current->size < best->size)
+                best = current;
+        }
 
         current = current->next;
     }
 
-    return NULL;
+    return best;
 }
 
 static void split_block(block_t *block, size_t need)
@@ -308,4 +314,10 @@ void *my_realloc(void *ptr, size_t size)
     my_free(ptr);
 
     return new_ptr;
+}
+
+void set_policy(fit_policy_t p)
+{
+    if (p == FIT_FIRST || p == FIT_BEST)
+        current_policy = p;
 }
